@@ -21,12 +21,20 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
 
 namespace BetterGenshinImpact.GameTask.AutoSkip;
 
-public class AutoTrackTask(AutoTrackParam param) : BaseIndependentTask
+public class AutoTrackTask : BaseIndependentTask, ISoloTask
 {
+    public string Name => "自动任务追踪";
+
+    public AutoTrackTask(AutoTrackParam param)
+    {
+        _ = param;
+    }
+
     // /// <summary>
     // /// 准备好前进了
     // /// </summary>
@@ -39,45 +47,24 @@ public class AutoTrackTask(AutoTrackParam param) : BaseIndependentTask
 
     private CancellationToken _ct;
 
-    public async void Start()
+    public Task Start(CancellationToken ct)
     {
-        var hasLock = false;
+        SystemControl.ActivateWindow();
+        Logger.LogInformation("→ {Text}", "自动追踪，启动！");
+
+        _ct = ct;
+
         try
         {
-            hasLock = await TaskSemaphore.WaitAsync(0);
-            if (!hasLock)
-            {
-                Logger.LogError("启动自动追踪功能失败：当前存在正在运行中的独立任务，请不要重复执行任务！");
-                return;
-            }
-
-            SystemControl.ActivateWindow();
-
-            Logger.LogInformation("→ {Text}", "自动追踪，启动！");
-
-            _ct = CancellationContext.Instance.Cts.Token;
-
             TrackMission();
-        }
-        catch (NormalEndException e)
-        {
-            Logger.LogInformation("自动追踪中断:" + e.Message);
-        }
-        catch (Exception e)
-        {
-            Logger.LogError(e.Message);
-            Logger.LogDebug(e.StackTrace);
         }
         finally
         {
             VisionContext.Instance().DrawContent.ClearAll();
             Logger.LogInformation("→ {Text}", "自动追踪结束");
-
-            if (hasLock)
-            {
-                TaskSemaphore.Release();
-            }
         }
+
+        return Task.CompletedTask;
     }
 
     private void TrackMission()
@@ -201,78 +188,88 @@ public class AutoTrackTask(AutoTrackParam param) : BaseIndependentTask
         // {
         int prevMoveX = 0;
         bool wDown = false;
-        while (!_ct.IsCancellationRequested)
+        try
         {
-            var ra = CaptureToRectArea();
-            var blueTrackPointRa = ra.Find(ElementAssets.Instance.BlueTrackPoint);
-            if (blueTrackPointRa.IsExist())
+            while (!_ct.IsCancellationRequested)
             {
-                // 使追踪点位于俯视角上方
-                var centerY = blueTrackPointRa.Y + blueTrackPointRa.Height / 2;
-                if (centerY > CaptureRect.Height / 2)
+                var ra = CaptureToRectArea();
+                var blueTrackPointRa = ra.Find(ElementAssets.Instance.BlueTrackPoint);
+                if (blueTrackPointRa.IsExist())
                 {
-                    Simulation.SendInput.Mouse.MoveMouseBy(-50, 0);
-                    if (wDown)
+                    // 使追踪点位于俯视角上方
+                    var centerY = blueTrackPointRa.Y + blueTrackPointRa.Height / 2;
+                    if (centerY > CaptureRect.Height / 2)
                     {
-                        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-                        wDown = false;
+                        Simulation.SendInput.Mouse.MoveMouseBy(-50, 0);
+                        if (wDown)
+                        {
+                            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+                            wDown = false;
+                        }
+                        Debug.WriteLine("使追踪点位于俯视角上方");
+                        continue;
                     }
-                    Debug.WriteLine("使追踪点位于俯视角上方");
-                    continue;
-                }
 
-                // 调整方向
-                var centerX = blueTrackPointRa.X + blueTrackPointRa.Width / 2;
-                var moveX = (centerX - CaptureRect.Width / 2) / 8;
-                moveX = moveX switch
-                {
-                    > 0 and < 10 => 10,
-                    > -10 and < 0 => -10,
-                    _ => moveX
-                };
-                if (moveX != 0)
-                {
-                    Simulation.SendInput.Mouse.MoveMouseBy(moveX, 0);
-                    Debug.WriteLine("调整方向:" + moveX);
-                }
-
-                if (moveX == 0 || prevMoveX * moveX < 0)
-                {
-                    if (!wDown)
+                    // 调整方向
+                    var centerX = blueTrackPointRa.X + blueTrackPointRa.Width / 2;
+                    var moveX = (centerX - CaptureRect.Width / 2) / 8;
+                    moveX = moveX switch
                     {
-                        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-                        wDown = true;
+                        > 0 and < 10 => 10,
+                        > -10 and < 0 => -10,
+                        _ => moveX
+                    };
+                    if (moveX != 0)
+                    {
+                        Simulation.SendInput.Mouse.MoveMouseBy(moveX, 0);
+                        Debug.WriteLine("调整方向:" + moveX);
                     }
-                }
 
-                if (Math.Abs(moveX) < 50 && Math.Abs(centerY - CaptureRect.Height / 2) < 200)
-                {
-                    if (wDown)
+                    if (moveX == 0 || prevMoveX * moveX < 0)
                     {
-                        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-                        wDown = false;
+                        if (!wDown)
+                        {
+                            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+                            wDown = true;
+                        }
                     }
-                    // 识别距离
-                    var text = OcrFactory.Paddle.OcrWithoutDetector(ra.CacheGreyMat[_missionDistanceRect]);
-                    if (StringUtils.TryExtractPositiveInt(text) is > -1 and <= 3)
+
+                    if (Math.Abs(moveX) < 50 && Math.Abs(centerY - CaptureRect.Height / 2) < 200)
                     {
-                        Logger.LogInformation("任务追踪：到达目标,识别结果[{Text}]", text);
+                        if (wDown)
+                        {
+                            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+                            wDown = false;
+                        }
+                        // 识别距离
+                        var text = OcrFactory.Paddle.OcrWithoutDetector(ra.CacheGreyMat[_missionDistanceRect]);
+                        if (StringUtils.TryExtractPositiveInt(text) is > -1 and <= 3)
+                        {
+                            Logger.LogInformation("任务追踪：到达目标,识别结果[{Text}]", text);
+                            break;
+                        }
+                        Logger.LogInformation("任务追踪：到达目标");
                         break;
                     }
-                    Logger.LogInformation("任务追踪：到达目标");
-                    break;
+
+                    prevMoveX = moveX;
+                }
+                else
+                {
+                    // 随机移动
+                    Logger.LogInformation("未找到追踪点");
                 }
 
-                prevMoveX = moveX;
+                Simulation.SendInput.Mouse.MoveMouseBy(0, 500); // 保证俯视角
+                Sleep(100);
             }
-            else
+        }
+        finally
+        {
+            if (wDown)
             {
-                // 随机移动
-                Logger.LogInformation("未找到追踪点");
+                Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
             }
-
-            Simulation.SendInput.Mouse.MoveMouseBy(0, 500); // 保证俯视角
-            Sleep(100);
         }
         // });
     }

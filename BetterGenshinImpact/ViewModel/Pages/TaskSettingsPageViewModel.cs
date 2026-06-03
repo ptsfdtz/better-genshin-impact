@@ -10,6 +10,8 @@ using BetterGenshinImpact.GameTask.AutoFishing;
 using BetterGenshinImpact.GameTask.AutoLeyLineOutcrop;
 using BetterGenshinImpact.GameTask.AutoGeniusInvokation;
 using BetterGenshinImpact.GameTask.AutoMusicGame;
+using BetterGenshinImpact.GameTask.AutoSkip;
+using BetterGenshinImpact.GameTask.AutoSkip.Model;
 using BetterGenshinImpact.GameTask.AutoStygianOnslaught;
 using BetterGenshinImpact.GameTask.AutoWood;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
@@ -99,6 +101,9 @@ public partial class TaskSettingsPageViewModel : ViewModel
 
     [ObservableProperty]
     private string _switchAutoFightButtonText = "启动";
+
+    [ObservableProperty]
+    private bool _switchAutoTrackEnabled;
 
     [ObservableProperty]
     private string _switchAutoTrackButtonText = "启动";
@@ -331,6 +336,7 @@ public partial class TaskSettingsPageViewModel : ViewModel
         SwitchAutoCookEnabled = false;
         SwitchAutoFishingEnabled = false;
         SwitchAutoLeyLineOutcropEnabled = false;
+        SwitchAutoTrackEnabled = false;
         SwitchArtifactSalvageEnabled = false;
         SwitchAutoRedeemCodeEnabled = false;
         SwitchAutoStygianOnslaughtEnabled = false;
@@ -512,33 +518,19 @@ public partial class TaskSettingsPageViewModel : ViewModel
         AutoFightViewModel?.OnOpenFightFolder();
     }
 
-    [Obsolete]
     [RelayCommand]
-    public void OnSwitchAutoTrack()
+    public async Task OnSwitchAutoTrack()
     {
-        // try
-        // {
-        //     lock (_locker)
-        //     {
-        //         if (SwitchAutoTrackButtonText == "启动")
-        //         {
-        //             _cts?.Cancel();
-        //             _cts = new CancellationTokenSource();
-        //             var param = new AutoTrackParam(_cts);
-        //             _taskDispatcher.StartIndependentTask(IndependentTaskEnum.AutoTrack, param);
-        //             SwitchAutoTrackButtonText = "停止";
-        //         }
-        //         else
-        //         {
-        //             _cts?.Cancel();
-        //             SwitchAutoTrackButtonText = "启动";
-        //         }
-        //     }
-        // }
-        // catch (Exception ex)
-        // {
-        //     ThemedMessageBox.Error(ex.Message);
-        // }
+        try
+        {
+            SwitchAutoTrackEnabled = true;
+            await new TaskRunner()
+                .RunSoloTaskAsync(new AutoTrackTask(new AutoTrackParam()));
+        }
+        finally
+        {
+            SwitchAutoTrackEnabled = false;
+        }
     }
 
     [RelayCommand]

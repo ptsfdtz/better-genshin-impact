@@ -576,6 +576,13 @@ public partial class HotKeyPageViewModel : ObservableObject, IViewModel
             (_, _) => { SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoDomainCommand); }
         ));
         soloTaskDirectory.Children.Add(new HotKeySettingModel(
+            "启动/停止自动寻路",
+            nameof(Config.HotKeyConfig.AutoTrackPathHotkey),
+            Config.HotKeyConfig.AutoTrackPathHotkey,
+            Config.HotKeyConfig.AutoTrackPathHotkeyType,
+            (_, _) => { SwitchSoloTask(_taskSettingsPageViewModel.SwitchAutoTrackCommand); }
+        ));
+        soloTaskDirectory.Children.Add(new HotKeySettingModel(
             "启动/停止自动音游",
             nameof(Config.HotKeyConfig.AutoMusicGameHotkey),
             Config.HotKeyConfig.AutoMusicGameHotkey,
